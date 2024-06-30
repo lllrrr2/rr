@@ -62,7 +62,7 @@ LKM="$(readConfigKey "lkm" "${USER_CONFIG_FILE}")"
 
 DMI="$(dmesg 2>/dev/null | grep -i "DMI:" | sed 's/\[.*\] DMI: //i')"
 CPU="$(echo $(cat /proc/cpuinfo 2>/dev/null | grep 'model name' | uniq | awk -F':' '{print $2}'))"
-MEM="$(free -m 2>/dev/null | grep -i mem | awk '{print $2}') MB"
+MEM="$(awk '/MemTotal:/ {printf "%.0f", $2 / 1024}' /proc/meminfo 2>/dev/null) MB"
 
 echo -e "$(TEXT "Model:   ") \033[1;36m${MODEL}(${PLATFORM})\033[0m"
 echo -e "$(TEXT "Version: ") \033[1;36m${PRODUCTVER}(${BUILDNUM}$([ ${SMALLNUM:-0} -ne 0 ] && echo "u${SMALLNUM}"))\033[0m"
@@ -119,8 +119,8 @@ else
   CMDLINE['noefi']=""
 fi
 DT="$(readConfigKey "platforms.${PLATFORM}.dt" "${WORK_PATH}/platforms.yml")"
-KVER="$(readConfigKey "platforms.${PLATFORM}.productvers.[${PRODUCTVER}].kver" "${WORK_PATH}/platforms.yml")"
-KPRE="$(readConfigKey "platforms.${PLATFORM}.productvers.[${PRODUCTVER}].kpre" "${WORK_PATH}/platforms.yml")"
+KVER="$(readConfigKey "platforms.${PLATFORM}.productvers.\"${PRODUCTVER}\".kver" "${WORK_PATH}/platforms.yml")"
+KPRE="$(readConfigKey "platforms.${PLATFORM}.productvers.\"${PRODUCTVER}\".kpre" "${WORK_PATH}/platforms.yml")"
 if [ $(echo "${KVER:-4}" | cut -d'.' -f1) -lt 5 ]; then
   if [ ! "${BUS}" = "usb" ]; then
     SZ=$(blockdev --getsz ${LOADER_DISK} 2>/dev/null) # SZ=$(cat /sys/block/${LOADER_DISK/\/dev\//}/size)
@@ -162,12 +162,30 @@ if [ "${DT}" = "true" ] && ! echo "epyc7002 purley broadwellnkv2" | grep -wq "${
   [ ! "${CMDLINE['modprobe.blacklist']}" = "" ] && CMDLINE['modprobe.blacklist']+=","
   CMDLINE['modprobe.blacklist']+="mpt3sas"
 fi
-if echo "epyc7002 apollolake geminilake" | grep -wq "${PLATFORM}"; then
+if true; then
+  [ ! "${CMDLINE['modprobe.blacklist']}" = "" ] && CMDLINE['modprobe.blacklist']+=","
+  CMDLINE['modprobe.blacklist']+="evbug"
+fi
+if echo "apollolake geminilake" | grep -wq "${PLATFORM}"; then
   CMDLINE["intel_iommu"]="igfx_off"
 fi
 if echo "purley broadwellnkv2" | grep -wq "${PLATFORM}"; then
   CMDLINE["SASmodel"]="1"
 fi
+
+if echo "apollolake geminilake purley" | grep -wq "${PLATFORM}"; then
+  if grep -q "^flags.*x2apic.*" /proc/cpuinfo; then
+    eval $(grep -o "RR_CMDLINE=.*$" "${USER_GRUB_CONFIG}")
+    [ -z "${RR_CMDLINE}" ] && RR_CMDLINE="bzImage-rr"
+    echo "${RR_CMDLINE}" | grep -q 'nox2apic' || sed -i "s|${RR_CMDLINE}|${RR_CMDLINE} nox2apic|" "${USER_GRUB_CONFIG}"
+  fi
+else
+  grep -q ' nox2apic' "${USER_GRUB_CONFIG}" && sed -i "s| nox2apic||" "${USER_GRUB_CONFIG}"
+fi
+
+while IFS=': ' read KEY VALUE; do
+  [ -n "${KEY}" ] && CMDLINE["network.${KEY}"]="${VALUE}"
+done <<<$(readConfigMap "network" "${USER_CONFIG_FILE}")
 
 while IFS=': ' read KEY VALUE; do
   [ -n "${KEY}" ] && CMDLINE["${KEY}"]="${VALUE}"
@@ -213,10 +231,12 @@ else
     echo -n "."
     sleep 1
   done
+
+  [ ! -f /var/run/dhcpcd/pid ] && /etc/init.d/S41dhcpcd restart >/dev/null 2>&1 || true
+
   echo "$(TEXT "Waiting IP.")"
   for N in ${ETHX}; do
     COUNT=0
-    /etc/init.d/S41dhcpcd restart >/dev/null 2>&1 || true
     DRIVER=$(ls -ld /sys/class/net/${N}/device/driver 2>/dev/null | awk -F '/' '{print $NF}')
     echo -en "${N}(${DRIVER}): "
     while true; do
@@ -248,12 +268,12 @@ else
   done
   BOOTWAIT="$(readConfigKey "bootwait" "${USER_CONFIG_FILE}")"
   [ -z "${BOOTWAIT}" ] && BOOTWAIT=10
-  w 2>/dev/null | awk '{print $1" "$2" "$4" "$5" "$6}' >WB
+  busybox w 2>/dev/null | awk '{print $1" "$2" "$4" "$5" "$6}' >WB
   MSG=""
   while test ${BOOTWAIT} -ge 0; do
     MSG="$(printf "\033[1;33m$(TEXT "%2ds (Changing access(ssh/web) status will interrupt boot)")\033[0m" "${BOOTWAIT}")"
     echo -en "\r${MSG}"
-    w 2>/dev/null | awk '{print $1" "$2" "$4" "$5" "$6}' >WC
+    busybox w 2>/dev/null | awk '{print $1" "$2" "$4" "$5" "$6}' >WC
     if ! diff WB WC >/dev/null 2>&1; then
       echo -en "\r\033[1;33m$(TEXT "access(ssh/web) status has changed and booting is interrupted.")\033[0m\n"
       rm -f WB WC
@@ -287,7 +307,7 @@ else
   fi
   kexec ${KEXECARGS} -l "${MOD_ZIMAGE_FILE}" --initrd "${MOD_RDGZ_FILE}" --command-line="${CMDLINE_LINE}" >"${LOG_FILE}" 2>&1 || dieLog
   echo -e "\033[1;37m$(TEXT "Booting ...")\033[0m"
-  for T in $(w 2>/dev/null | grep -v "TTY" | awk -F' ' '{print $2}'); do
+  for T in $(busybox w 2>/dev/null | grep -v 'TTY' | awk '{print $2}'); do
     [ -w "/dev/${T}" ] && echo -e "\n\033[1;43m$(TEXT "[This interface will not be operational. Please wait a few minutes.\nFind DSM via http://find.synology.com/ or Synology Assistant and connect.]")\033[0m\n" >"/dev/${T}" 2>/dev/null || true
   done
 
@@ -295,6 +315,6 @@ else
   rm -rf "${PART1_PATH}/logs" >/dev/null 2>&1 || true
 
   KERNELWAY="$(readConfigKey "kernelway" "${USER_CONFIG_FILE}")"
-  [ "${KERNELWAY}" = "kexec" ] && kexec -i -a -e || poweroff
+  [ "${KERNELWAY}" = "kexec" ] && kexec -a -e || poweroff
   exit 0
 fi

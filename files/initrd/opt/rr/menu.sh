@@ -110,7 +110,7 @@ function modelMenu() {
       --infobox "$(TEXT "Getting models ...")" 0 0
   fi
   PS="$(readConfigEntriesArray "platforms" "${WORK_PATH}/platforms.yml" | sort)"
-  MJ="$(python include/functions.py getmodels -p "${PS[*]}")"
+  MJ="$(python ${WORK_PATH}/include/functions.py getmodels -p "${PS[*]}")"
   if [ -z "${MJ}" -o "${MJ}" = "[]" ]; then
     if _get_fastest synology.com >/dev/null 2>&1; then
       DIALOG --title "$(TEXT "Model")" \
@@ -167,7 +167,7 @@ function modelMenu() {
   # If user change model, clean build* and pat* and SN
   if [ "${MODEL}" != "${resp}" ]; then
     PLATFORM="$(grep -w "${resp}" "${TMP_PATH}/modellist" | awk '{print $2}' | head -n 1)"
-    MODEL=${resp}
+    MODEL="${resp}"
     writeConfigKey "platform" "${PLATFORM}" "${USER_CONFIG_FILE}"
     writeConfigKey "model" "${MODEL}" "${USER_CONFIG_FILE}"
     MODELID=""
@@ -180,7 +180,7 @@ function modelMenu() {
     writeConfigKey "smallnum" "${SMALLNUM}" "${USER_CONFIG_FILE}"
     writeConfigKey "paturl" "" "${USER_CONFIG_FILE}"
     writeConfigKey "patsum" "" "${USER_CONFIG_FILE}"
-    SN=$(generateSerial "${MODEL}")
+    SN="$(generateSerial "${MODEL}")"
     writeConfigKey "sn" "${SN}" "${USER_CONFIG_FILE}"
     NETIF_NUM=2
     MACS=($(generateMacAddress "${MODEL}" ${NETIF_NUM}))
@@ -222,6 +222,8 @@ function productversMenu() {
   fi
   selver="${resp}"
   urlver=""
+  paturl=""
+  patsum=""
   # KVER=$(readConfigKey "platforms.${PLATFORM}.productvers.[${resp}].kver" "${WORK_PATH}/platforms.yml")
   # if [ $(echo "${KVER:-4}" | cut -d'.' -f1) -lt 4 ] && [ -d "/sys/firmware/efi" ]; then
   #   if [ -z "${1}" ]; then
@@ -327,8 +329,8 @@ function productversMenu() {
     writeConfigKey "synoinfo.\"${KEY}\"" "${VALUE}" "${USER_CONFIG_FILE}"
   done <<<$(readConfigMap "platforms.${PLATFORM}.synoinfo" "${WORK_PATH}/platforms.yml")
   # Check addons
-  KVER="$(readConfigKey "platforms.${PLATFORM}.productvers.[${PRODUCTVER}].kver" "${WORK_PATH}/platforms.yml")"
-  KPRE="$(readConfigKey "platforms.${PLATFORM}.productvers.[${PRODUCTVER}].kpre" "${WORK_PATH}/platforms.yml")"
+  KVER="$(readConfigKey "platforms.${PLATFORM}.productvers.\"${PRODUCTVER}\".kver" "${WORK_PATH}/platforms.yml")"
+  KPRE="$(readConfigKey "platforms.${PLATFORM}.productvers.\"${PRODUCTVER}\".kpre" "${WORK_PATH}/platforms.yml")"
   while IFS=': ' read ADDON PARAM; do
     [ -z "${ADDON}" ] && continue
     if ! checkAddonExist "${ADDON}" "${PLATFORM}" "$([ -n "${KPRE}" ] && echo "${KPRE}-")${KVER}"; then
@@ -367,12 +369,12 @@ function setConfigFromDSM() {
   PS="$(readConfigEntriesArray "platforms" "${WORK_PATH}/platforms.yml" | sort)"
   VS="$(readConfigEntriesArray "platforms.${PLATFORMTMP,,}.productvers" "${WORK_PATH}/platforms.yml" | sort -r)"
   if arrayExistItem "${PLATFORMTMP,,}" ${PS} && arrayExistItem "${majorversion}.${minorversion}" ${VS}; then
-    PLATFORM=${PLATFORMTMP,,}
-    MODEL=$(echo ${MODELTMP} | sed 's/d$/D/; s/rp$/RP/; s/rp+/RP+/')
-    MODELID=${MODELTMP}
-    PRODUCTVER=${majorversion}.${minorversion}
-    BUILDNUM=${buildnumber}
-    SMALLNUM=${smallfixnumber}
+    PLATFORM="${PLATFORMTMP,,}"
+    MODEL="$(echo ${MODELTMP} | sed 's/d$/D/; s/rp$/RP/; s/rp+/RP+/')"
+    MODELID="${MODELTMP}"
+    PRODUCTVER="${majorversion}.${minorversion}"
+    BUILDNUM="${buildnumber}"
+    SMALLNUM="${smallfixnumber}"
   else
     echo "$(printf "$(TEXT "Currently, %s is not supported.")" "${MODELTMP}-${majorversion}.${minorversion}")" >"${LOG_FILE}"
     return 1
@@ -383,7 +385,7 @@ function setConfigFromDSM() {
   writeConfigKey "platform" "${PLATFORM}" "${USER_CONFIG_FILE}"
   writeConfigKey "model" "${MODEL}" "${USER_CONFIG_FILE}"
   writeConfigKey "modelid" "${MODELID}" "${USER_CONFIG_FILE}"
-  SN=$(generateSerial "${MODEL}")
+  SN="$(generateSerial "${MODEL}")"
   writeConfigKey "sn" "${SN}" "${USER_CONFIG_FILE}"
   NETIF_NUM=2
   MACS=($(generateMacAddress "${MODEL}" ${NETIF_NUM}))
@@ -405,8 +407,8 @@ function setConfigFromDSM() {
   done <<<$(readConfigMap "platforms.${PLATFORM}.synoinfo" "${WORK_PATH}/platforms.yml")
 
   # Check addons
-  KVER="$(readConfigKey "platforms.${PLATFORM}.productvers.[${PRODUCTVER}].kver" "${WORK_PATH}/platforms.yml")"
-  KPRE="$(readConfigKey "platforms.${PLATFORM}.productvers.[${PRODUCTVER}].kpre" "${WORK_PATH}/platforms.yml")"
+  KVER="$(readConfigKey "platforms.${PLATFORM}.productvers.\"${PRODUCTVER}\".kver" "${WORK_PATH}/platforms.yml")"
+  KPRE="$(readConfigKey "platforms.${PLATFORM}.productvers.\"${PRODUCTVER}\".kpre" "${WORK_PATH}/platforms.yml")"
   while IFS=': ' read ADDON PARAM; do
     [ -z "${ADDON}" ] && continue
     if ! checkAddonExist "${ADDON}" "${PLATFORM}" "$([ -n "${KPRE}" ] && echo "${KPRE}-")${KVER}"; then
@@ -514,8 +516,8 @@ function ParsePat() {
 # Manage addons
 function addonMenu() {
   # Read 'platform' and kernel version to check if addon exists
-  KVER="$(readConfigKey "platforms.${PLATFORM}.productvers.[${PRODUCTVER}].kver" "${WORK_PATH}/platforms.yml")"
-  KPRE="$(readConfigKey "platforms.${PLATFORM}.productvers.[${PRODUCTVER}].kpre" "${WORK_PATH}/platforms.yml")"
+  KVER="$(readConfigKey "platforms.${PLATFORM}.productvers.\"${PRODUCTVER}\".kver" "${WORK_PATH}/platforms.yml")"
+  KPRE="$(readConfigKey "platforms.${PLATFORM}.productvers.\"${PRODUCTVER}\".kpre" "${WORK_PATH}/platforms.yml")"
 
   NEXT="a"
   # Loop menu
@@ -652,8 +654,8 @@ function addonMenu() {
 
 ###############################################################################
 function moduleMenu() {
-  KVER="$(readConfigKey "platforms.${PLATFORM}.productvers.[${PRODUCTVER}].kver" "${WORK_PATH}/platforms.yml")"
-  KPRE="$(readConfigKey "platforms.${PLATFORM}.productvers.[${PRODUCTVER}].kpre" "${WORK_PATH}/platforms.yml")"
+  KVER="$(readConfigKey "platforms.${PLATFORM}.productvers.\"${PRODUCTVER}\".kver" "${WORK_PATH}/platforms.yml")"
+  KPRE="$(readConfigKey "platforms.${PLATFORM}.productvers.\"${PRODUCTVER}\".kpre" "${WORK_PATH}/platforms.yml")"
   NEXT="c"
   # loop menu
   while true; do
@@ -845,6 +847,7 @@ function cmdlineMenu() {
     a)
       MSG=""
       MSG+="$(TEXT "Commonly used cmdlines:\n")"
+      MSG+="$(TEXT " * \Z4SpectreAll_on=\Zn\n    Enable Spectre and Meltdown protection to mitigate the threat of speculative execution vulnerability.\n")"
       MSG+="$(TEXT " * \Z4disable_mtrr_trim=\Zn\n    disables kernel trim any uncacheable memory out.\n")"
       MSG+="$(TEXT " * \Z4intel_idle.max_cstate=1\Zn\n    Set the maximum C-state depth allowed by the intel_idle driver.\n")"
       MSG+="$(TEXT " * \Z4pcie_port_pm=off\Zn\n    Turn off the power management of the PCIe port.\n")"
@@ -860,7 +863,9 @@ function cmdlineMenu() {
       MSG+="$(TEXT " * \Z4consoleblank=300\Zn\n    Set the console to auto turnoff display 300 seconds after no activity (measured in seconds).\n")"
       MSG+="$(TEXT "\nEnter the parameter name and value you need to add.\n")"
       LINENUM=$(($(echo -e "${MSG}" | wc -l) + 10))
+      RET=0
       while true; do
+        [ ${RET} -eq 255 ] && MSG="$(TEXT "Commonly used cmdlines:\n")"
         DIALOG --title "$(TEXT "Cmdline")" \
           --form "${MSG}" ${LINENUM:-16} 100 2 "Name:" 1 1 "" 1 10 85 0 "Value:" 2 1 "" 2 10 85 0 \
           2>"${TMP_PATH}/resp"
@@ -872,7 +877,7 @@ function cmdlineMenu() {
           if [ -z "${NAME//\"/}" ]; then
             DIALOG --title "$(TEXT "Cmdline")" \
               --yesno "$(TEXT "Invalid parameter name, retry?")" 0 0
-            [ $? -eq 0 ] && break
+            [ $? -eq 0 ] && continue || break
           fi
           writeConfigKey "cmdline.\"${NAME//\"/}\"" "${VALUE}" "${USER_CONFIG_FILE}"
           break
@@ -881,7 +886,7 @@ function cmdlineMenu() {
           break
           ;;
         255) # ESC
-          break
+          # break
           ;;
         esac
       done
@@ -932,7 +937,7 @@ function cmdlineMenu() {
           if [ -z "${sn}" -o -z "${mac1}" ]; then
             DIALOG --title "$(TEXT "Cmdline")" \
               --yesno "$(TEXT "Invalid SN/MAC, retry?")" 0 0
-            [ $? -eq 0 ] && break
+            [ $? -eq 0 ] && continue || break
           fi
           SN="${sn}"
           writeConfigKey "sn" "${SN}" "${USER_CONFIG_FILE}"
@@ -986,6 +991,7 @@ function synoinfoMenu() {
     a)
       MSG=""
       MSG+="$(TEXT "Commonly used synoinfo:\n")"
+      MSG+="$(TEXT " * \Z4support_apparmor=no\Zn\n    Disable apparmor.\n")"
       MSG+="$(TEXT " * \Z4maxdisks=??\Zn\n    Maximum number of disks supported.\n")"
       MSG+="$(TEXT " * \Z4internalportcfg=0x????\Zn\n    Internal(sata) disks mask(Not apply to DT models).\n")"
       MSG+="$(TEXT " * \Z4esataportcfg=0x????\Zn\n    Esata disks mask(Not apply to DT models).\n")"
@@ -993,7 +999,9 @@ function synoinfoMenu() {
       MSG+="$(TEXT " * \Z4max_sys_raid_disks=12\Zn\n    Maximum number of system partition(md0) raid disks.\n")"
       MSG+="$(TEXT "\nEnter the parameter name and value you need to add.\n")"
       LINENUM=$(($(echo -e "${MSG}" | wc -l) + 10))
+      RET=0
       while true; do
+        [ ${RET} -eq 255 ] && MSG="$(TEXT "Commonly used synoinfo:\n")"
         DIALOG --title "$(TEXT "Synoinfo")" \
           --form "${MSG}" ${LINENUM:-16} 100 2 "Name:" 1 1 "" 1 10 85 0 "Value:" 2 1 "" 2 10 85 0 \
           2>"${TMP_PATH}/resp"
@@ -1005,7 +1013,7 @@ function synoinfoMenu() {
           if [ -z "${NAME//\"/}" ]; then
             DIALOG --title "$(TEXT "Synoinfo")" \
               --yesno "$(TEXT "Invalid parameter name, retry?")" 0 0
-            [ $? -eq 0 ] && break
+            [ $? -eq 0 ] && continue || break
           fi
           writeConfigKey "synoinfo.\"${NAME//\"/}\"" "${VALUE}" "${USER_CONFIG_FILE}"
           touch ${PART1_PATH}/.build
@@ -1015,7 +1023,7 @@ function synoinfoMenu() {
           break
           ;;
         255) # ESC
-          break
+          # break
           ;;
         esac
       done
@@ -1480,46 +1488,54 @@ function editGrubCfg() {
 ###############################################################################
 # Set static IP
 function setStaticIP() {
-  MSG="$(TEXT "Temporary IP: (UI will not refresh)")"
-  ITEMS=""
-  IDX=0
   ETHX=$(ls /sys/class/net/ 2>/dev/null | grep -v lo)
   for ETH in ${ETHX}; do
-    [ ${IDX} -gt 7 ] && break # Currently, only up to 8 are supported.  (<==> boot.sh L96, <==> lkm: MAX_NET_IFACES)
-    IDX=$((${IDX} + 1))
     MACR="$(cat /sys/class/net/${ETH}/address 2>/dev/null | sed 's/://g')"
     IPR="$(readConfigKey "network.${MACR}" "${USER_CONFIG_FILE}")"
-    ITEMS+="${ETH}(${MACR}) ${IDX} 1 ${IPR:-\"\"} ${IDX} 22 36 16 "
-  done
-  echo ${ITEMS} >"${TMP_PATH}/opts"
-  DIALOG --title "$(TEXT "Advanced")" \
-    --form "${MSG}" 10 60 ${IDX} --file "${TMP_PATH}/opts" \
-    2>"${TMP_PATH}/resp"
-  [ $? -ne 0 ] && return
-  (
-    IDX=1
-    for ETH in ${ETHX}; do
-      MACR="$(cat /sys/class/net/${ETH}/address 2>/dev/null | sed 's/://g')"
-      IPR="$(readConfigKey "network.${MACR}" "${USER_CONFIG_FILE}")"
-      IPC="$(cat "${TMP_PATH}/resp" | sed -n "${IDX}p")"
-      if [ -n "${IPC}" -a "${IPR}" != "${IPC}" ]; then
-        if ! echo "${IPC}" | grep -q "/"; then
-          IPC="${IPC}/24"
+    IFS='/' read -r -a IPRA <<<"$IPR"
+
+    MSG="$(printf "$(TEXT "Set to %s: (Delete if empty)")" "${ETH}(${MACR})")"
+    while true; do
+      DIALOG --title "$(TEXT "Advanced")" \
+        --form "${MSG}" 10 60 4 "address" 1 1 "${IPRA[0]}" 1 9 36 16 "netmask" 2 1 "${IPRA[1]}" 2 9 36 16 "gateway" 3 1 "${IPRA[2]}" 3 9 36 16 "dns" 4 1 "${IPRA[3]}" 4 9 36 16 \
+        2>"${TMP_PATH}/resp"
+      RET=$?
+      case ${RET} in
+      0) # ok-button
+        DIALOG --title "$(TEXT "Advanced")" \
+          --infobox "$(TEXT "Setting IP ...")" 0 0
+        address="$(cat "${TMP_PATH}/resp" | sed -n '1p')"
+        netmask="$(cat "${TMP_PATH}/resp" | sed -n '2p')"
+        gateway="$(cat "${TMP_PATH}/resp" | sed -n '3p')"
+        dnsname="$(cat "${TMP_PATH}/resp" | sed -n '4p')"
+        if [ -z "${address}" ]; then
+          deleteConfigKey "network.${MACR}" "${USER_CONFIG_FILE}"
+        else
+          ip addr flush dev $ETH
+          ip addr add ${address}/${netmask:-"255.255.255.0"} dev $ETH
+          if [ -n "${gateway}" ]; then
+            ip route add default via ${gateway} dev $ETH
+          fi
+          if [ -n "${dnsname:-${gateway}}" ]; then
+            sed -i "/nameserver ${dnsname:-${gateway}}/d" /etc/resolv.conf
+            echo "nameserver ${dnsname:-${gateway}}" >>/etc/resolv.conf
+          fi
+          writeConfigKey "network.${MACR}" "${address}/${netmask}/${gateway}/${dnsname}" "${USER_CONFIG_FILE}"
+          IP="$(getIP)"
+          sleep 1
         fi
-        ip addr add ${IPC} dev ${ETH}
-        writeConfigKey "network.${MACR}" "${IPC}" "${USER_CONFIG_FILE}"
-        sleep 1
-      elif [ -z "${IPC}" ]; then
-        deleteConfigKey "network.${MACR}" "${USER_CONFIG_FILE}"
-      fi
-      IDX=$((${IDX} + 1))
+        touch ${PART1_PATH}/.build
+        break
+        ;;
+      1) # cancel-button
+        break
+        ;;
+      255) # ESC
+        break 2
+        ;;
+      esac
     done
-    sleep 1
-    IP="$(getIP)"
-    [[ "${IP}" =~ ^169\.254\..* ]] && IP=""
-  ) 2>&1 | DIALOG --title "$(TEXT "Advanced")" \
-    --progressbox "$(TEXT "Setting IP ...")" 20 100
-  return
+  done
 }
 
 ###############################################################################
@@ -1548,7 +1564,7 @@ function setWirelessAccount() {
       if [ -z "${SSID}" -o -z "${PSK}" ]; then
         DIALOG --title "$(TEXT "Advanced")" \
           --yesno "$(TEXT "Invalid SSID/PSK, retry?")" 0 0
-        [ $? -eq 0 ] && break
+        [ $? -eq 0 ] && continue || break
       fi
       (
         rm -f ${PART1_PATH}/wpa_supplicant.conf
@@ -1670,13 +1686,13 @@ function showDisksInfo() {
 # Format disk
 function formatDisks() {
   rm -f "${TMP_PATH}/opts"
-  while read KNAME ID PKNAME; do
+  while read KNAME ID SIZE TYPE PKNAME; do
     [ -z "${KNAME}" ] && continue
     [[ "${KNAME}" = /dev/md* ]] && continue
     [ "${KNAME}" = "${LOADER_DISK}" -o "${PKNAME}" = "${LOADER_DISK}" ] && continue
     [ -z "${ID}" ] && ID="Unknown"
-    echo "\"${KNAME}\" \"${ID}\" \"off\"" >>"${TMP_PATH}/opts"
-  done <<<$(lsblk -pno KNAME,ID,PKNAME)
+    printf "\"%s\" \"%-6s %-4s %s\" \"off\"\n" "${KNAME}" "${SIZE}" "${TYPE}" "${ID}" >>"${TMP_PATH}/opts"
+  done <<<$(lsblk -pno KNAME,ID,SIZE,TYPE,PKNAME)
   if [ ! -f "${TMP_PATH}/opts" ]; then
     DIALOG --title "$(TEXT "Advanced")" \
       --msgbox "$(TEXT "No disk found!")" 0 0
@@ -1691,12 +1707,12 @@ function formatDisks() {
   DIALOG --title "$(TEXT "Advanced")" \
     --yesno "$(TEXT "Warning:\nThis operation is irreversible. Please backup important data. Do you want to continue?")" 0 0
   [ $? -ne 0 ] && return
-  if [ $(ls /dev/md* 2>/dev/null | wc -l) -gt 0 ]; then
+  if [ $(ls /dev/md[0-9]* 2>/dev/null | wc -l) -gt 0 ]; then
     DIALOG --title "$(TEXT "Advanced")" \
       --yesno "$(TEXT "Warning:\nThe current hds is in raid, do you still want to format them?")" 0 0
     [ $? -ne 0 ] && return
-    for I in $(ls /dev/md* 2>/dev/null); do
-      mdadm -S "${I}"
+    for I in $(ls /dev/md[0-9]* 2>/dev/null); do
+      mdadm -S "${I}" >/dev/null 2>&1
     done
   fi
   for I in ${RESP}; do
@@ -1781,7 +1797,7 @@ function tryRecoveryDSM() {
   fi
 
   if [ -f "${TMP_PATH}/mdX/etc/synoinfo.conf" ]; then
-    R_SN=$(_get_conf_kv SN "${TMP_PATH}/mdX/etc/synoinfo.conf")
+    R_SN="$(_get_conf_kv SN "${TMP_PATH}/mdX/etc/synoinfo.conf")"
     [ -n "${R_SN}" ] && SN=${R_SN} && writeConfigKey "sn" "${SN}" "${USER_CONFIG_FILE}"
   fi
 
@@ -1920,7 +1936,7 @@ function addNewDSMUser() {
   (
     ONBOOTUP=""
     ONBOOTUP="${ONBOOTUP}if synouser --enum local | grep -q ^${username}\$; then synouser --setpw ${username} ${password}; else synouser --add ${username} ${password} rr 0 user@rr.com 1; fi\n"
-    ONBOOTUP="${ONBOOTUP}synogroup --member administrators ${username}\n"
+    ONBOOTUP="${ONBOOTUP}synogroup --memberadd administrators ${username}\n"
     ONBOOTUP="${ONBOOTUP}echo \"DELETE FROM task WHERE task_name LIKE ''RRONBOOTUPRR_ADDUSER'';\" | sqlite3 /usr/syno/etc/esynoscheduler/esynoscheduler.db\n"
 
     mkdir -p "${TMP_PATH}/mdX"
@@ -2012,6 +2028,39 @@ function removeBlockIPDB {
   ) 2>&1 | DIALOG --title "$(TEXT "Advanced")" \
     --progressbox "$(TEXT "Removing ...")" 20 100
   MSG="$(TEXT "The blocked ip database has been deleted.")"
+  DIALOG --title "$(TEXT "Advanced")" \
+    --msgbox "${MSG}" 0 0
+  return
+}
+###############################################################################
+# Initialize DSM network settings
+function initDSMNetwork {
+  MSG=""
+  MSG+="$(TEXT "This option will clear all customized settings of the network card and restore them to the default state.\n")"
+  MSG+="$(TEXT "Warning:\nThis operation is irreversible. Please backup important data. Do you want to continue?")"
+  DIALOG --title "$(TEXT "Advanced")" \
+    --yesno "${MSG}" 0 0
+  [ $? -ne 0 ] && return
+  DSMROOTS="$(findDSMRoot)"
+  if [ -z "${DSMROOTS}" ]; then
+    DIALOG --title "$(TEXT "Advanced")" \
+      --msgbox "$(TEXT "No DSM system partition(md0) found!\nPlease insert all disks before continuing.")" 0 0
+    return
+  fi
+  (
+    mkdir -p "${TMP_PATH}/mdX"
+    for I in ${DSMROOTS}; do
+      mount -t ext4 "${I}" "${TMP_PATH}/mdX"
+      [ $? -ne 0 ] && continue
+      rm -f "${TMP_PATH}/mdX/etc/sysconfig/network-scripts/ifcfg-bond"* "${TMP_PATH}/mdX/etc/sysconfig/network-scripts/ifcfg-eth"*
+      rm -f "${TMP_PATH}/mdX/etc.defaults/sysconfig/network-scripts/ifcfg-bond"* "${TMP_PATH}/mdX/etc.defaults/sysconfig/network-scripts/ifcfg-eth"*
+      sync
+      umount "${TMP_PATH}/mdX"
+    done
+    rm -rf "${TMP_PATH}/mdX"
+  ) 2>&1 | DIALOG --title "$(TEXT "Advanced")" \
+    --progressbox "$(TEXT "Recovering ...")" 20 100
+  MSG="$(TEXT "The network settings have been initialized.")"
   DIALOG --title "$(TEXT "Advanced")" \
     --msgbox "${MSG}" 0 0
   return
@@ -2266,6 +2315,7 @@ function advancedMenu() {
       echo "y \"$(TEXT "Add a new user to DSM system")\"" >>"${TMP_PATH}/menu"
       echo "z \"$(TEXT "Force enable Telnet&SSH of DSM system")\"" >>"${TMP_PATH}/menu"
       echo "4 \"$(TEXT "Remove the blocked ip database of DSM")\"" >>"${TMP_PATH}/menu"
+      echo "6 \"$(TEXT "Initialize DSM network settings")\"" >>"${TMP_PATH}/menu"
       echo "r \"$(TEXT "Clone bootloader disk to another disk")\"" >>"${TMP_PATH}/menu"
       echo "v \"$(TEXT "Report bugs to the author")\"" >>"${TMP_PATH}/menu"
       echo "5 \"$(TEXT "Download DSM config backup files")\"" >>"${TMP_PATH}/menu"
@@ -2465,6 +2515,10 @@ function advancedMenu() {
       removeBlockIPDB
       NEXT="e"
       ;;
+    6)
+      initDSMNetwork
+      NEXT="e"
+      ;;
     r)
       cloneBootloaderDisk
       NEXT="e"
@@ -2662,7 +2716,7 @@ function downloadExts() {
   TAG=""
   if [ "${PRERELEASE}" = "true" ]; then
     # TAG="$(curl -skL --connect-timeout 10 "${PROXY}${3}/tags" | pup 'a[class="Link--muted"] attr{href}' | grep ".zip" | head -1)"
-    TAG="$(curl -skL --connect-timeout 10 "${PROXY}${3}/tags" | grep /refs/tags/.*\.zip | head -1 | sed -r 's/.*\/refs\/tags\/(.*)\.zip.*$/\1/')"
+    TAG="$(curl -skL --connect-timeout 10 "${PROXY}${3}/tags" | grep /refs/tags/.*\.zip | sed -r 's/.*\/refs\/tags\/(.*)\.zip.*$/\1/' | sort -rV | head -1)"
   else
     LATESTURL="$(curl -skL --connect-timeout 10 -w %{url_effective} -o /dev/null "${PROXY}${3}/releases/latest")"
     TAG="${LATESTURL##*/}"
@@ -2819,8 +2873,10 @@ function updateRR() {
       mkdir -p "${TMP_PATH}/update/$(dirname "${VALUE}")"
       mv -f "${TMP_PATH}/update/$(basename "${KEY}")" "${TMP_PATH}/update/${VALUE}"
     fi
-    SIZENEW=$((${SIZENEW} + $(du -sm "${TMP_PATH}/update/${VALUE}" 2>/dev/null | awk '{print $1}')))
-    SIZEOLD=$((${SIZEOLD} + $(du -sm "${VALUE}" 2>/dev/null | awk '{print $1}')))
+    FSNEW=$(du -sm "${TMP_PATH}/update/${VALUE}" 2>/dev/null | awk '{print $1}')
+    FSOLD=$(du -sm "${VALUE}" 2>/dev/null | awk '{print $1}')
+    SIZENEW=$((${SIZENEW} + ${FSNEW:-0}))
+    SIZEOLD=$((${SIZEOLD} + ${FSOLD:-0}))
   done <<<$(readConfigMap "replace" "${TMP_PATH}/update/update-list.yml")
 
   SIZESPL=$(df -m ${PART3_PATH} 2>/dev/null | awk 'NR==2 {print $4}')
@@ -2854,8 +2910,8 @@ function updateRR() {
       cp -Rf "${TMP_PATH}/update/${VALUE}"/* "${VALUE}"
       if [ "$(realpath "${VALUE}")" = "$(realpath "${MODULES_PATH}")" ]; then
         if [ -n "${MODEL}" -a -n "${PRODUCTVER}" ]; then
-          KVER="$(readConfigKey "platforms.${PLATFORM}.productvers.[${PRODUCTVER}].kver" "${WORK_PATH}/platforms.yml")"
-          KPRE="$(readConfigKey "platforms.${PLATFORM}.productvers.[${PRODUCTVER}].kpre" "${WORK_PATH}/platforms.yml")"
+          KVER="$(readConfigKey "platforms.${PLATFORM}.productvers.\"${PRODUCTVER}\".kver" "${WORK_PATH}/platforms.yml")"
+          KPRE="$(readConfigKey "platforms.${PLATFORM}.productvers.\"${PRODUCTVER}\".kpre" "${WORK_PATH}/platforms.yml")"
           if [ -n "${PLATFORM}" -a -n "${KVER}" ]; then
             writeConfigKey "modules" "{}" "${USER_CONFIG_FILE}"
             while read ID DESC; do
@@ -2988,8 +3044,8 @@ function updateModules() {
   rm -rf "${MODULES_PATH}/"*
   cp -rf "${TMP_PATH}/update/"* "${MODULES_PATH}/"
   if [ -n "${MODEL}" -a -n "${PRODUCTVER}" ]; then
-    KVER="$(readConfigKey "platforms.${PLATFORM}.productvers.[${PRODUCTVER}].kver" "${WORK_PATH}/platforms.yml")"
-    KPRE="$(readConfigKey "platforms.${PLATFORM}.productvers.[${PRODUCTVER}].kpre" "${WORK_PATH}/platforms.yml")"
+    KVER="$(readConfigKey "platforms.${PLATFORM}.productvers.\"${PRODUCTVER}\".kver" "${WORK_PATH}/platforms.yml")"
+    KPRE="$(readConfigKey "platforms.${PLATFORM}.productvers.\"${PRODUCTVER}\".kpre" "${WORK_PATH}/platforms.yml")"
     if [ -n "${PLATFORM}" -a -n "${KVER}" ]; then
       writeConfigKey "modules" "{}" "${USER_CONFIG_FILE}"
       while read ID DESC; do
@@ -3110,8 +3166,8 @@ function updateCKs() {
   rm -rf "${CKS_PATH}/"*
   cp -rf "${TMP_PATH}/update/"* "${CKS_PATH}/"
   if [ -n "${MODEL}" -a -n "${PRODUCTVER}" -a "${KERNEL}" = "custom" ]; then
-    KVER="$(readConfigKey "platforms.${PLATFORM}.productvers.[${PRODUCTVER}].kver" "${WORK_PATH}/platforms.yml")"
-    KPRE="$(readConfigKey "platforms.${PLATFORM}.productvers.[${PRODUCTVER}].kpre" "${WORK_PATH}/platforms.yml")"
+    KVER="$(readConfigKey "platforms.${PLATFORM}.productvers.\"${PRODUCTVER}\".kver" "${WORK_PATH}/platforms.yml")"
+    KPRE="$(readConfigKey "platforms.${PLATFORM}.productvers.\"${PRODUCTVER}\".kpre" "${WORK_PATH}/platforms.yml")"
     if [ -n "${PLATFORM}" -a -n "${KVER}" ]; then
       writeConfigKey "modules" "{}" "${USER_CONFIG_FILE}"
       while read ID DESC; do
@@ -3297,14 +3353,10 @@ function updateMenu() {
 ###############################################################################
 function cleanCache() {
   if [ ! "${1}" = "-1" ]; then
-    (
-      rm -rfv "${PART3_PATH}/dl/"*
-      rm -rfv "${TMP_PATH}/"*
-    ) 2>&1 | DIALOG --title "$(TEXT "Main menu")" \
+    rm -rfv "${PART3_PATH}/dl/"* 2>&1 | DIALOG --title "$(TEXT "Main menu")" \
       --progressbox "$(TEXT "Cleaning cache ...")" 20 100
   else
     rm -rfv "${PART3_PATH}/dl/"*
-    rm -rfv "${TMP_PATH}/"*
   fi
   return 0
 }
@@ -3322,6 +3374,10 @@ function notepadMenu() {
 
 ###############################################################################
 ###############################################################################
+if false && [ $(ps -ef | grep -v grep | grep -c "menu.sh") -gt 1 ]; then
+  echo "$(TEXT "Another instance of the menu.sh is running.")"
+  exit 1
+fi
 if [ $# -ge 1 ]; then
   $@
 else
@@ -3338,8 +3394,8 @@ else
     fi
     echo "u \"$(TEXT "Parse pat")\"" >>"${TMP_PATH}/menu"
     if [ -n "${PRODUCTVER}" ]; then
-      KVER="$(readConfigKey "platforms.${PLATFORM}.productvers.[${PRODUCTVER}].kver" "${WORK_PATH}/platforms.yml")"
-      KPRE="$(readConfigKey "platforms.${PLATFORM}.productvers.[${PRODUCTVER}].kpre" "${WORK_PATH}/platforms.yml")"
+      KVER="$(readConfigKey "platforms.${PLATFORM}.productvers.\"${PRODUCTVER}\".kver" "${WORK_PATH}/platforms.yml")"
+      KPRE="$(readConfigKey "platforms.${PLATFORM}.productvers.\"${PRODUCTVER}\".kpre" "${WORK_PATH}/platforms.yml")"
       if [ -f "${CKS_PATH}/bzImage-${PLATFORM}-$([ -n "${KPRE}" ] && echo "${KPRE}-")${KVER}.gz" ] &&
         [ -f "${CKS_PATH}/modules-${PLATFORM}-$([ -n "${KPRE}" ] && echo "${KPRE}-")${KVER}.tgz" ]; then
         echo "s \"$(TEXT "Kernel:") \Z4${KERNEL}\Zn\"" >>"${TMP_PATH}/menu"
@@ -3453,36 +3509,58 @@ else
     e)
       NEXT="e"
       while true; do
-        DIALOG \
-          --default-item ${NEXT} --menu "$(TEXT "Choose a action")" 0 0 0 \
-          p "$(TEXT "Poweroff")" \
-          r "$(TEXT "Reboot")" \
-          x "$(TEXT "Reboot to RR")" \
-          y "$(TEXT "Reboot to Recovery")" \
-          z "$(TEXT "Reboot to Junior")" \
-          s "$(TEXT "Back to shell")" \
-          e "$(TEXT "Exit")" \
+        echo -n "" >"${TMP_PATH}/menu"
+        echo "p \"$(TEXT "Poweroff")\"" >>"${TMP_PATH}/menu"
+        echo "r \"$(TEXT "Reboot")\"" >>"${TMP_PATH}/menu"
+        echo "x \"$(TEXT "Reboot to RR")\"" >>"${TMP_PATH}/menu"
+        echo "y \"$(TEXT "Reboot to Recovery")\"" >>"${TMP_PATH}/menu"
+        echo "z \"$(TEXT "Reboot to Junior")\"" >>"${TMP_PATH}/menu"
+        if efibootmgr | grep -q "^Boot0000"; then
+          echo "b \"$(TEXT "Reboot to BIOS")\"" >>"${TMP_PATH}/menu"
+        fi
+        echo "s \"$(TEXT "Back to shell")\"" >>"${TMP_PATH}/menu"
+        echo "e \"$(TEXT "Exit")\"" >>"${TMP_PATH}/menu"
+
+        DIALOG --title "$(TEXT "Main menu")" \
+          --default-item ${NEXT} --menu "$(TEXT "Choose a action")" 0 0 0 --file "${TMP_PATH}/menu" \
           2>${TMP_PATH}/resp
         [ $? -ne 0 ] && break
         case "$(cat ${TMP_PATH}/resp)" in
         p)
+          DIALOG --title "$(TEXT "Main menu")" \
+            --infobox "$(TEXT "Poweroff")" 0 0
           poweroff
           exit 0
           ;;
         r)
+          DIALOG --title "$(TEXT "Main menu")" \
+            --infobox "$(TEXT "Reboot")" 0 0
           reboot
           exit 0
           ;;
         x)
+          DIALOG --title "$(TEXT "Main menu")" \
+            --infobox "$(TEXT "Reboot to RR")" 0 0
           rebootTo config
           exit 0
           ;;
         y)
+          DIALOG --title "$(TEXT "Main menu")" \
+            --infobox "$(TEXT "Reboot to Recovery")" 0 0
           rebootTo recovery
           exit 0
           ;;
         z)
+          DIALOG --title "$(TEXT "Main menu")" \
+            --infobox "$(TEXT "Reboot to Junior")" 0 0
           rebootTo junior
+          exit 0
+          ;;
+        b)
+          DIALOG --title "$(TEXT "Main menu")" \
+            --infobox "$(TEXT "Reboot to BIOS")" 0 0
+          efibootmgr -n 0000 >/dev/null 2>&1
+          reboot
           exit 0
           ;;
         s)
